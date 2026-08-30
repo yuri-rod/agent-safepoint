@@ -18,6 +18,12 @@ pub struct Checkpoint {
     pub summary: String,
     pub total_files: usize,
     pub total_bytes: u64,
+    #[serde(default)]
+    pub agent_name: Option<String>,
+    #[serde(default)]
+    pub agent_prompt: Option<String>,
+    #[serde(default)]
+    pub agent_tools: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -62,6 +68,9 @@ impl Journal {
         exit_code: Option<i32>,
         duration_ms: Option<u64>,
         tag: Option<String>,
+        agent_name: Option<String>,
+        agent_prompt: Option<String>,
+        agent_tools: Vec<String>,
     ) -> Checkpoint {
         self.current_id += 1;
         let checkpoint = Checkpoint {
@@ -76,6 +85,9 @@ impl Journal {
             summary,
             total_files,
             total_bytes,
+            agent_name,
+            agent_prompt,
+            agent_tools,
         };
         self.checkpoints.push(checkpoint.clone());
         checkpoint
@@ -130,6 +142,24 @@ impl Journal {
                     .map(|d| format!(" ({}ms)", d))
                     .unwrap_or_default();
                 println!("    {} `{}` [exit: {}{}]", "cmd:".dimmed(), cmd, code_str, dur_str.dimmed());
+            }
+
+            if let Some(agent) = &cp.agent_name {
+                let tools_str = if !cp.agent_tools.is_empty() {
+                    format!(" | tools: {}", cp.agent_tools.join(", ").magenta())
+                } else {
+                    String::new()
+                };
+                println!("    {} {}{}", "agent:".dimmed(), agent.bold(), tools_str);
+            }
+
+            if let Some(prompt) = &cp.agent_prompt {
+                let truncated = if prompt.len() > 80 {
+                    format!("{}...", &prompt[..77])
+                } else {
+                    prompt.clone()
+                };
+                println!("    {} \"{}\"", "prompt:".dimmed(), truncated.italic());
             }
 
             println!("    {} {} files ({:.2} MB) | tree: {:.8}",

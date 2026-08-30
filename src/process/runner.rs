@@ -4,6 +4,7 @@ use std::process::Command;
 use std::time::Instant;
 use colored::*;
 
+use crate::adapters;
 use crate::core::cas::ObjectStore;
 use crate::core::diff::TreeDiff;
 use crate::core::journal::Journal;
@@ -42,6 +43,8 @@ pub fn execute_wrapped(
     let diff = TreeDiff::compute(&baseline_tree, &post_tree);
     let summary = diff.summary();
 
+    let agent_meta = adapters::detect_and_extract(workspace, &command_str);
+
     let cp = journal.add(
         post_hash,
         Some(parent_hash),
@@ -52,6 +55,9 @@ pub fn execute_wrapped(
         Some(exit_code),
         Some(duration_ms),
         tag,
+        agent_meta.agent_name,
+        agent_meta.prompt,
+        agent_meta.tool_calls,
     );
     journal.save(&safepoint_dir)?;
 

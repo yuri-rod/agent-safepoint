@@ -54,6 +54,9 @@ fn test_adversarial_full_recovery() {
         None,
         None,
         Some("v1".to_string()),
+        None,
+        None,
+        Vec::new(),
     );
     journal.save(&safepoint_dir).unwrap();
 
@@ -178,14 +181,14 @@ fn test_multi_step_time_travel() {
     create_file(&workspace.join("file.txt"), b"version 1\n", None);
     let t1 = TreeManifest::scan(workspace, &store).unwrap();
     let h1 = t1.save(&store).unwrap();
-    journal.add(h1.clone(), None, "v1".into(), t1.total_files, t1.total_bytes, None, None, None, None);
+    journal.add(h1.clone(), None, "v1".into(), t1.total_files, t1.total_bytes, None, None, None, None, None, None, Vec::new());
 
     // Step 2
     create_file(&workspace.join("file.txt"), b"version 2\n", None);
     create_file(&workspace.join("file2.txt"), b"hello v2\n", None);
     let t2 = TreeManifest::scan(workspace, &store).unwrap();
     let h2 = t2.save(&store).unwrap();
-    journal.add(h2.clone(), Some(h1.clone()), "v2".into(), t2.total_files, t2.total_bytes, None, None, None, None);
+    journal.add(h2.clone(), Some(h1.clone()), "v2".into(), t2.total_files, t2.total_bytes, None, None, None, None, None, None, Vec::new());
 
     // Step 3
     create_file(&workspace.join("file.txt"), b"version 3\n", None);
@@ -193,7 +196,7 @@ fn test_multi_step_time_travel() {
     create_file(&workspace.join("file3.txt"), b"hello v3\n", None);
     let t3 = TreeManifest::scan(workspace, &store).unwrap();
     let h3 = t3.save(&store).unwrap();
-    journal.add(h3.clone(), Some(h2.clone()), "v3".into(), t3.total_files, t3.total_bytes, None, None, None, None);
+    journal.add(h3.clone(), Some(h2.clone()), "v3".into(), t3.total_files, t3.total_bytes, None, None, None, None, None, None, Vec::new());
 
     // Rollback to v2
     let curr = TreeManifest::scan(workspace, &store).unwrap();

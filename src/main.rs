@@ -129,6 +129,9 @@ fn main() -> io::Result<()> {
                 None,
                 None,
                 tag,
+                None,
+                None,
+                Vec::new(),
             );
             journal.save(&safepoint_dir)?;
 

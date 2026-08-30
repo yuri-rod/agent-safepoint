@@ -1,7 +1,9 @@
 use std::env;
+use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
+use clap_complete::{generate, Shell};
 use colored::*;
 
 use safepoint::core::cas::ObjectStore;
@@ -70,6 +72,32 @@ enum Commands {
         #[arg(default_value = "latest", help = "Checkpoint selector (e.g. @1, @2, latest)")]
         target: String,
     },
+
+    #[command(about = "Generate shell tab-completion scripts")]
+    Completions {
+        #[arg(value_enum, help = "Target shell")]
+        shell: ShellChoice,
+    },
+
+    #[command(about = "Install Git safety hooks for auto-checkpointing before risky git ops")]
+    Hook {
+        #[arg(value_enum, help = "Hook action")]
+        action: HookAction,
+    },
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+enum ShellChoice {
+    Bash,
+    Zsh,
+    Fish,
+    PowerShell,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+enum HookAction {
+    Install,
+    Uninstall,
 }
 
 fn find_workspace_root(start_dir: &Path) -> PathBuf {
@@ -277,6 +305,47 @@ fn main() -> io::Result<()> {
                 println!("  {:04o}  {}  {}", entry.mode & 0o777, kind, path);
             }
             println!();
+        }
+
+        Commands::Completions { shell } => {
+            let mut cmd = Cli::command();
+            let name = cmd.get_name().to_string();
+            match shell {
+                ShellChoice::Bash => generate(Shell::Bash, &mut cmd, name, &mut io::stdout()),
+                ShellChoice::Zsh => generate(Shell::Zsh, &mut cmd, name, &mut io::stdout()),
+                ShellChoice::Fish => generate(Shell::Fish, &mut cmd, name, &mut io::stdout()),
+                ShellChoice::PowerShell => generate(Shell::PowerShell, &mut cmd, name, &mut io::stdout()),
+            }
+        }
+
+        Commands::Hook { action } => {
+            let git_hooks = workspace.join(".git").join("hooks");
+            if !git_hooks.exists() {
+                eprintln!("Error: Workspace is not a Git repository (no .git/hooks directory found).");
+                std::process::exit(1);
+            }
+
+            let pre_rebase = git_hooks.join("pre-rebase");
+            match action {
+                HookAction::Install => {
+                    let script = "#!/bin/sh\n# safepoint safety hook\nsafepoint checkpoint -m 'pre-rebase auto-checkpoint' >/dev/null 2>&1 || true\n";
+                    fs::write(&pre_rebase, script)?;
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        fs::set_permissions(&pre_rebase, fs::Permissions::from_mode(0o755))?;
+                    }
+                    println!("{} Installed pre-rebase safety hook in .git/hooks/pre-rebase", "✓".green().bold());
+                }
+                HookAction::Uninstall => {
+                    if pre_rebase.exists() {
+                        fs::remove_file(&pre_rebase)?;
+                        println!("{} Removed .git/hooks/pre-rebase", "✓".green().bold());
+                    } else {
+                        println!("Hook was not installed.");
+                    }
+                }
+            }
         }
     }
 

@@ -1,5 +1,7 @@
 pub mod codex;
 pub mod claude;
+pub mod aider;
+pub mod gemini;
 
 use std::path::Path;
 use serde::{Deserialize, Serialize};
@@ -31,15 +33,27 @@ pub fn detect_and_extract(workspace: &Path, command_str: &str) -> AgentMetadata 
             prompt: None,
             tool_calls: Vec::new(),
         };
-    } else if lower_cmd.contains("opencode") {
+    } else if lower_cmd.contains("gemini") || lower_cmd.contains("agy") || lower_cmd.contains("antigravity") {
+        if let Some(meta) = gemini::extract_metadata(workspace) {
+            return meta;
+        }
         return AgentMetadata {
-            agent_name: Some("OpenCode".to_string()),
+            agent_name: Some("Gemini/Antigravity".to_string()),
             prompt: None,
             tool_calls: Vec::new(),
         };
     } else if lower_cmd.contains("aider") {
+        if let Some(meta) = aider::extract_metadata(workspace) {
+            return meta;
+        }
         return AgentMetadata {
             agent_name: Some("Aider".to_string()),
+            prompt: None,
+            tool_calls: Vec::new(),
+        };
+    } else if lower_cmd.contains("opencode") {
+        return AgentMetadata {
+            agent_name: Some("OpenCode".to_string()),
             prompt: None,
             tool_calls: Vec::new(),
         };

@@ -10,6 +10,8 @@ jobs:
   test:
     name: Build & Adversarial Tests
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
@@ -20,7 +22,8 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Check formatting and clippy
+      - name: Check formatting, lint, and tests
         run: |
-          cargo check
+          cargo fmt --all -- --check
+          cargo clippy --all-targets --all-features -- -D warnings
           cargo test --verbose

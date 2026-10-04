@@ -7,7 +7,7 @@
 
 **Universal, local-first undo and recovery layer for coding agents.**
 
-`safepoint` wraps tools like Codex, Claude Code, OpenCode, Aider, and Gemini CLI, records what the agent did, checkpoints the workspace, and safely restores files created, modified, renamed, or deleted, even when changes were made through Bash subshells, Python scripts, heredocs, or arbitrary shell commands.
+`safepoint` wraps tools like Codex, Claude Code, OpenCode, Aider, and Gemini CLI, checkpoints a workspace, and restores file changes detected there, including changes made through shell commands and scripts.
 
 ```bash
 # Wrap any agent run with automatic pre/post recovery checkpoints
@@ -28,22 +28,23 @@ $ safepoint undo @1
 ## Why Safepoint?
 
 1. **Vendor rewinds are leaky**: Built-in rewinds (like Claude Code rewind) miss files created or altered through Bash subshells, `sed`, or script executions.
-2. **Git is untouched**: Unlike naive git checkpoint wrappers, `safepoint` operates an independent content-addressed store in `.safepoint/`. It never mutates `git HEAD`, refs, staging index, or stash history.
-3. **Untracked & pre-existing work protected**: Untracked scratch files, config files, and uncommitted edits are fully protected and recoverable.
-4. **Instant & deduplicated**: Content-addressed blob store (SHA-256) ensures identical files across checkpoints cost zero additional disk space.
+2. **Git history stays separate**: `safepoint` stores snapshots in `.safepoint/` without creating commits or changing refs. A recovery test confirms that undo leaves `HEAD` unchanged.
+3. **Uncommitted work is recoverable**: Files and changes present before a checkpoint, including untracked files, are included in the snapshot and restored by undo.
+4. **Content-addressed storage**: SHA-256 blobs are reused for identical file contents across checkpoints.
 5. **Agent transcript aware**: Automatically detects Codex, Claude Code, OpenCode, and Aider sessions, linking user prompts and tool calls to each checkpoint.
 
 ---
 
-## The Invariant Restoration Contract
+## What Recovery Covers
 
 After running `safepoint undo @n`:
-- **Created files** (by agent or shell commands) are completely deleted.
-- **Modified files** are restored byte-for-byte to their original contents and file permissions.
-- **Deleted files** are revived with exact original bytes and Unix file modes.
-- **Renamed files** are restored to their original paths.
-- **Pre-existing uncommitted work** remains untouched.
-- **Git history** remains 100% clean and unaltered.
+- Files added after a checkpoint are removed by undo.
+- Deleted files are restored with their saved contents.
+- Modified files return to their saved contents and, on Unix, permissions.
+- Untracked work present before the checkpoint is restored if it is changed or deleted afterward.
+- Undo does not create Git commits. The recovery test checks that `HEAD` is unchanged.
+
+The adversarial recovery tests exercise added, modified, deleted, and binary files, plus files whose permissions change and uncommitted work present before the checkpoint. They do not establish coverage for every filesystem type or excluded path.
 
 ---
 

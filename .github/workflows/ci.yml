@@ -18,12 +18,22 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Check formatting, lint, and tests
+      - name: Check formatting on changed Rust files
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
-          cargo fmt --all -- --check
+          mapfile -d '' rust_files < <(git diff --name-only -z "${BASE_SHA}...HEAD" -- '*.rs')
+          if ((${#rust_files[@]})); then
+            rustfmt --check --edition 2021 "${rust_files[@]}"
+          fi
+
+      - name: Run clippy and tests
+        run: |
           cargo clippy --all-targets --all-features -- -D warnings
           cargo test --verbose

@@ -28,10 +28,11 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
-          mapfile -d '' rust_files < <(git diff --name-only -z "${BASE_SHA}...HEAD" -- '*.rs')
-          if ((${#rust_files[@]})); then
-            rustfmt --check --edition 2021 "${rust_files[@]}"
-          fi
+          set -o pipefail
+          git diff --name-only -z "${BASE_SHA}...HEAD" -- '*.rs' |
+            while IFS= read -r -d '' rust_file; do
+              rustfmt --check --edition 2021 "$rust_file"
+            done
 
       - name: Run clippy and tests
         run: |

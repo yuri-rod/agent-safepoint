@@ -1,8 +1,9 @@
 [package]
 name = "safepoint"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "Universal, local-first undo and recovery layer for coding agents"
+repository = "https://github.com/yuri-rod/agent-safepoint"
 license = "MIT"
 
 [dependencies]

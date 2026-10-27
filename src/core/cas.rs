@@ -114,7 +114,14 @@ impl ObjectStore {
                 "Invalid SHA-256 object ID",
             ));
         }
-        let mut source = File::open(self.object_path(hash))?;
+        let path = self.object_path(hash);
+        if !fs::symlink_metadata(&path)?.is_file() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Object {hash} is not a regular file"),
+            ));
+        }
+        let mut source = File::open(path)?;
         let mut digest = Sha256::new();
         let mut buffer = [0; 64 * 1024];
         loop {

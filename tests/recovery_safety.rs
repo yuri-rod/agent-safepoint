@@ -65,6 +65,37 @@ fn corrupt_blob_cannot_replace_an_existing_file() {
     assert_eq!(fs::read(dest).unwrap(), b"current draft");
 }
 
+#[cfg(unix)]
+#[test]
+fn object_reads_reject_symlinks_and_fifos() {
+    use std::os::unix::fs::symlink;
+    use std::process::Command;
+
+    let temp = TempDir::new().unwrap();
+    let store = ObjectStore::new(&temp.path().join(".safepoint")).unwrap();
+    let hash = store.write_blob(b"saved draft").unwrap();
+    let object = store.object_path(&hash);
+    let outside = temp.path().join("outside");
+    fs::write(&outside, b"saved draft").unwrap();
+    fs::remove_file(&object).unwrap();
+    symlink(&outside, &object).unwrap();
+    assert_eq!(
+        store.read_blob(&hash).unwrap_err().kind(),
+        io::ErrorKind::InvalidData
+    );
+
+    fs::remove_file(&object).unwrap();
+    assert!(Command::new("mkfifo")
+        .arg(&object)
+        .status()
+        .unwrap()
+        .success());
+    assert_eq!(
+        store.verify_blob(&hash).unwrap_err().kind(),
+        io::ErrorKind::InvalidData
+    );
+}
+
 fn manifest_entry(path: &str, hash: &str) -> TreeManifest {
     let mut tree = TreeManifest::new();
     tree.entries.insert(

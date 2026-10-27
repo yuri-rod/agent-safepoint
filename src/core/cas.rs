@@ -1,7 +1,8 @@
+use sha2::{Digest, Sha256};
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
-use sha2::{Digest, Sha256};
+use tempfile::NamedTempFile;
 
 pub struct ObjectStore {
     root: PathBuf,
@@ -80,30 +81,56 @@ impl ObjectStore {
     }
 
     pub fn read_blob(&self, hash: &str) -> io::Result<Vec<u8>> {
-        let path = self.object_path(hash);
-        if !path.exists() {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                format!("Object {} not found in store", hash),
-            ));
-        }
-        fs::read(path)
+        let mut bytes = Vec::new();
+        self.copy_verified(hash, &mut bytes)?;
+        Ok(bytes)
+    }
+
+    pub fn verify_blob(&self, hash: &str) -> io::Result<()> {
+        self.copy_verified(hash, &mut io::sink())
     }
 
     pub fn copy_to_file(&self, hash: &str, dest_path: &Path) -> io::Result<()> {
-        let src_path = self.object_path(hash);
-        if !src_path.exists() {
+        let parent = dest_path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        fs::create_dir_all(parent)?;
+        let mut temporary = NamedTempFile::new_in(parent)?;
+        self.copy_verified(hash, temporary.as_file_mut())?;
+        temporary.as_file().sync_all()?;
+        temporary.persist(dest_path).map_err(|err| err.error)?;
+        Ok(())
+    }
+
+    fn copy_verified(&self, hash: &str, output: &mut impl Write) -> io::Result<()> {
+        if hash.len() != 64
+            || !hash
+                .bytes()
+                .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+        {
             return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                format!("Object {} not found in store", hash),
+                io::ErrorKind::InvalidInput,
+                "Invalid SHA-256 object ID",
             ));
         }
-
-        if let Some(parent) = dest_path.parent() {
-            fs::create_dir_all(parent)?;
+        let mut source = File::open(self.object_path(hash))?;
+        let mut digest = Sha256::new();
+        let mut buffer = [0; 64 * 1024];
+        loop {
+            let count = source.read(&mut buffer)?;
+            if count == 0 {
+                break;
+            }
+            digest.update(&buffer[..count]);
+            output.write_all(&buffer[..count])?;
         }
-
-        fs::copy(src_path, dest_path)?;
+        if format!("{:x}", digest.finalize()) != hash {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Object {hash} failed SHA-256 verification"),
+            ));
+        }
         Ok(())
     }
 }

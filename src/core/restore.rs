@@ -1,7 +1,7 @@
+use colored::*;
 use std::fs;
 use std::io;
-use std::path::Path;
-use colored::*;
+use std::path::{Component, Path};
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -75,16 +75,55 @@ impl RestorePlan {
             println!("  {} {} (will recreate)", "+".green().bold(), entry.path);
         }
         for (target_entry, _) in &self.files_to_modify {
-            println!("  {} {} (will revert)", "~".yellow().bold(), target_entry.path);
+            println!(
+                "  {} {} (will revert)",
+                "~".yellow().bold(),
+                target_entry.path
+            );
         }
         for (target_entry, _) in &self.modes_to_change {
-            println!("  {} {} (will chmod to {:o})", "*".blue().bold(), target_entry.path, target_entry.mode);
+            println!(
+                "  {} {} (will chmod to {:o})",
+                "*".blue().bold(),
+                target_entry.path,
+                target_entry.mode
+            );
         }
         println!();
     }
 
     pub fn execute(&self, workspace: &Path, store: &ObjectStore) -> io::Result<()> {
-        // 1. Delete newly created files
+        // Check the entire plan before deleting any current work.
+        for path in &self.files_to_delete {
+            validate_path(workspace, path)?;
+        }
+        for entry in self
+            .files_to_restore
+            .iter()
+            .chain(self.files_to_modify.iter().map(|(target, _)| target))
+        {
+            validate_path(workspace, &entry.path)?;
+            if entry.is_symlink {
+                if entry.symlink_target.is_none() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "Missing symlink target",
+                    ));
+                }
+            } else {
+                store.verify_blob(&entry.hash)?;
+            }
+        }
+        for (entry, _) in &self.modes_to_change {
+            validate_path(workspace, &entry.path)?;
+            if fs::symlink_metadata(workspace.join(&entry.path))?.is_symlink() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Cannot change permissions through a symlink",
+                ));
+            }
+        }
+
         for rel_path in &self.files_to_delete {
             let full_path = workspace.join(rel_path);
             if full_path.exists() || fs::symlink_metadata(&full_path).is_ok() {
@@ -93,19 +132,16 @@ impl RestorePlan {
             }
         }
 
-        // 2. Restore deleted / renamed files
         for entry in &self.files_to_restore {
             let full_path = workspace.join(&entry.path);
             restore_single_entry(entry, &full_path, store)?;
         }
 
-        // 3. Revert modified files
         for (target_entry, _) in &self.files_to_modify {
             let full_path = workspace.join(&target_entry.path);
             restore_single_entry(target_entry, &full_path, store)?;
         }
 
-        // 4. Update file permissions
         for (target_entry, _) in &self.modes_to_change {
             let full_path = workspace.join(&target_entry.path);
             #[cfg(unix)]
@@ -118,16 +154,52 @@ impl RestorePlan {
     }
 }
 
-fn restore_single_entry(entry: &FileEntry, full_path: &Path, store: &ObjectStore) -> io::Result<()> {
+fn validate_path(workspace: &Path, relative: &str) -> io::Result<()> {
+    let path = Path::new(relative);
+    let safe = path.components().all(|part| match part {
+        Component::Normal(name) => {
+            !name.eq_ignore_ascii_case(".git") && !name.eq_ignore_ascii_case(".safepoint")
+        }
+        _ => false,
+    });
+    if relative.is_empty() || !safe {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Unsafe checkpoint path: {relative:?}"),
+        ));
+    }
+    let mut parent = workspace.to_path_buf();
+    let components: Vec<_> = path.components().collect();
+    for part in &components[..components.len() - 1] {
+        parent.push(part.as_os_str());
+        match fs::symlink_metadata(&parent) {
+            Ok(metadata) if metadata.is_symlink() => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("Checkpoint path has a symlink parent: {relative:?}"),
+                ));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => break,
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
+}
+
+fn restore_single_entry(
+    entry: &FileEntry,
+    full_path: &Path,
+    store: &ObjectStore,
+) -> io::Result<()> {
     if let Some(parent) = full_path.parent() {
         fs::create_dir_all(parent)?;
     }
 
-    if full_path.exists() || fs::symlink_metadata(full_path).is_ok() {
-        let _ = fs::remove_file(full_path);
-    }
-
     if entry.is_symlink {
+        if fs::symlink_metadata(full_path).is_ok() {
+            fs::remove_file(full_path)?;
+        }
         if let Some(target) = &entry.symlink_target {
             #[cfg(unix)]
             std::os::unix::fs::symlink(target, full_path)?;

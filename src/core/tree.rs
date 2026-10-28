@@ -1,10 +1,10 @@
+use ignore::WalkBuilder;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::Path;
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
-use ignore::WalkBuilder;
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -21,7 +21,7 @@ pub struct FileEntry {
     pub symlink_target: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TreeManifest {
     pub tree_hash: String,
     pub total_files: usize,
@@ -31,12 +31,7 @@ pub struct TreeManifest {
 
 impl TreeManifest {
     pub fn new() -> Self {
-        Self {
-            tree_hash: String::new(),
-            total_files: 0,
-            total_bytes: 0,
-            entries: BTreeMap::new(),
-        }
+        Self::default()
     }
 
     pub fn compute_tree_hash(&mut self) {
@@ -44,8 +39,8 @@ impl TreeManifest {
         for (path, entry) in &self.entries {
             hasher.update(path.as_bytes());
             hasher.update(entry.hash.as_bytes());
-            hasher.update(&entry.size.to_le_bytes());
-            hasher.update(&entry.mode.to_le_bytes());
+            hasher.update(entry.size.to_le_bytes());
+            hasher.update(entry.mode.to_le_bytes());
             if let Some(target) = &entry.symlink_target {
                 hasher.update(target.as_bytes());
             }
@@ -151,7 +146,6 @@ impl TreeManifest {
 
     pub fn load(hash: &str, store: &ObjectStore) -> io::Result<Self> {
         let bytes = store.read_blob(hash)?;
-        serde_json::from_slice(&bytes)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        serde_json::from_slice(&bytes).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 }

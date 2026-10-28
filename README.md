@@ -98,6 +98,7 @@ cargo build --locked --release
 The tests create disposable directories and Git repositories:
 
 - [Recovery scenarios](tests/adversarial_recovery.rs): added, deleted, modified, binary, permission-changed, and uncommitted files; multiple checkpoints; unchanged Git HEAD.
+- [Adapter parsing](src/adapters): synthetic transcripts verify valid metadata and rejection of read/UTF-8 decoding errors, without accessing home-directory sessions.
 - [Recovery safety](tests/recovery_safety.rs): missing/corrupt objects, symlinks and FIFOs in the object store, invalid object IDs, unsafe paths, symlink redirection, and preservation of current work when validation fails.
 
 CI runs on Linux and macOS. Its formatting check covers changed Rust files. Before contributing, format each changed Rust file with `rustfmt --edition 2021 path/to/file.rs`, run the relevant regression and full suite, and describe any checks that could not run. Keep filesystem-destructive tests inside disposable workspaces.

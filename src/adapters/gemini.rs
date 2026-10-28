@@ -1,7 +1,7 @@
+use serde_json::Value;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use serde_json::Value;
 
 use super::AgentMetadata;
 
@@ -38,7 +38,11 @@ fn find_newest_transcript(dir: &Path) -> Option<PathBuf> {
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.is_file() && (path.extension().map_or(false, |ext| ext == "jsonl" || ext == "json")) {
+            if path.is_file()
+                && (path
+                    .extension()
+                    .is_some_and(|ext| ext == "jsonl" || ext == "json"))
+            {
                 if let Ok(meta) = path.metadata() {
                     if let Ok(modified) = meta.modified() {
                         if modified > newest_time {
@@ -71,7 +75,8 @@ fn parse_transcript(path: &Path) -> Option<AgentMetadata> {
     let mut prompt = None;
     let mut tool_calls = Vec::new();
 
-    for line in reader.lines().flatten() {
+    for line in reader.lines() {
+        let line = line.ok()?;
         if let Ok(val) = serde_json::from_str::<Value>(&line) {
             if let Some(t) = val.get("type").and_then(|s| s.as_str()) {
                 if t == "USER_INPUT" || t == "user" {
@@ -99,4 +104,25 @@ fn parse_transcript(path: &Path) -> Option<AgentMetadata> {
         prompt,
         tool_calls,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_transcript;
+
+    #[test]
+    fn rejects_transcript_read_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("synthetic.jsonl");
+        let valid = br#"{"type":"user","content":"synthetic prompt","tool_calls":[{"name":"read"}]}
+"#;
+        std::fs::write(&path, valid).unwrap();
+        let metadata = parse_transcript(&path).unwrap();
+        assert_eq!(metadata.prompt.as_deref(), Some("synthetic prompt"));
+        assert_eq!(metadata.tool_calls, vec!["read"]);
+
+        let corrupt = [valid.as_slice(), b"\xff\n", valid.as_slice()].concat();
+        std::fs::write(&path, corrupt).unwrap();
+        assert!(parse_transcript(&path).is_none());
+    }
 }

@@ -1,7 +1,7 @@
-use std::collections::HashSet;
 use colored::*;
 use serde::{Deserialize, Serialize};
 use similar::{ChangeTag, TextDiff};
+use std::collections::HashSet;
 
 use super::cas::ObjectStore;
 use super::tree::{FileEntry, TreeManifest};
@@ -102,7 +102,10 @@ impl TreeDiff {
         // Heuristic: Match exact renames (same content hash across deleted and added)
         let mut remaining_deleted = Vec::new();
         for del in deleted {
-            if let Some(pos) = added.iter().position(|add| add.hash == del.hash && !matched_added_paths.contains(&add.path)) {
+            if let Some(pos) = added
+                .iter()
+                .position(|add| add.hash == del.hash && !matched_added_paths.contains(&add.path))
+            {
                 let add = added.remove(pos);
                 matched_added_paths.insert(add.path.clone());
                 renamed.push((del, add));
@@ -154,7 +157,11 @@ impl TreeDiff {
 
             let is_binary = from_bytes.contains(&0) || to_bytes.contains(&0);
             if is_binary {
-                println!("  [Binary file differs ({} bytes -> {} bytes)]\n", from_bytes.len(), to_bytes.len());
+                println!(
+                    "  [Binary file differs ({} bytes -> {} bytes)]\n",
+                    from_bytes.len(),
+                    to_bytes.len()
+                );
                 continue;
             }
 
@@ -171,7 +178,7 @@ impl TreeDiff {
         }
 
         for entry in &self.added {
-            println!("{}", format!("--- /dev/null").red());
+            println!("{}", "--- /dev/null".red());
             println!("{}", format!("+++ b/{}", entry.path).green());
 
             let bytes = store.read_blob(&entry.hash).unwrap_or_default();
@@ -188,7 +195,7 @@ impl TreeDiff {
 
         for entry in &self.deleted {
             println!("{}", format!("--- a/{}", entry.path).red());
-            println!("{}", format!("+++ /dev/null").green());
+            println!("{}", "+++ /dev/null".green());
 
             let bytes = store.read_blob(&entry.hash).unwrap_or_default();
             if bytes.contains(&0) {

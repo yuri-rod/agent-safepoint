@@ -1,7 +1,7 @@
+use serde_json::Value;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use serde_json::Value;
 
 use super::AgentMetadata;
 
@@ -38,7 +38,11 @@ fn find_newest_json(dir: &Path) -> Option<PathBuf> {
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.is_file() && (path.extension().map_or(false, |ext| ext == "json" || ext == "jsonl")) {
+            if path.is_file()
+                && (path
+                    .extension()
+                    .is_some_and(|ext| ext == "json" || ext == "jsonl"))
+            {
                 if let Ok(meta) = path.metadata() {
                     if let Ok(modified) = meta.modified() {
                         if modified > newest_time {
@@ -71,7 +75,8 @@ fn parse_claude_session(path: &Path) -> Option<AgentMetadata> {
     let mut prompt = None;
     let mut tool_calls = Vec::new();
 
-    for line in reader.lines().flatten() {
+    for line in reader.lines() {
+        let line = line.ok()?;
         if let Ok(val) = serde_json::from_str::<Value>(&line) {
             if let Some(role) = val.get("role").and_then(|s| s.as_str()) {
                 if role == "user" {
@@ -95,4 +100,25 @@ fn parse_claude_session(path: &Path) -> Option<AgentMetadata> {
         prompt,
         tool_calls,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_claude_session;
+
+    #[test]
+    fn rejects_transcript_read_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("synthetic.jsonl");
+        let valid = br#"{"role":"user","content":"synthetic prompt","tool":"read"}
+"#;
+        std::fs::write(&path, valid).unwrap();
+        let metadata = parse_claude_session(&path).unwrap();
+        assert_eq!(metadata.prompt.as_deref(), Some("synthetic prompt"));
+        assert_eq!(metadata.tool_calls, vec!["read"]);
+
+        let corrupt = [valid.as_slice(), b"\xff\n", valid.as_slice()].concat();
+        std::fs::write(&path, corrupt).unwrap();
+        assert!(parse_claude_session(&path).is_none());
+    }
 }

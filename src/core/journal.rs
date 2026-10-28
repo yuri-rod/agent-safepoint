@@ -1,9 +1,9 @@
-use std::fs;
-use std::io;
-use std::path::{Path, PathBuf};
 use chrono::{DateTime, Utc};
 use colored::*;
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Checkpoint {
@@ -43,8 +43,7 @@ impl Journal {
             return Ok(Self::default());
         }
         let bytes = fs::read(&path)?;
-        serde_json::from_slice(&bytes)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        serde_json::from_slice(&bytes).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 
     pub fn save(&self, safepoint_dir: &Path) -> io::Result<()> {
@@ -57,6 +56,10 @@ impl Journal {
         fs::write(path, json_bytes)
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Preserve the published Journal::add signature for existing callers."
+    )]
     pub fn add(
         &mut self,
         tree_hash: String,
@@ -108,7 +111,10 @@ impl Journal {
         }
 
         self.checkpoints.iter().find(|c| {
-            c.tag.as_deref().map(|t| t.eq_ignore_ascii_case(selector)).unwrap_or(false)
+            c.tag
+                .as_deref()
+                .map(|t| t.eq_ignore_ascii_case(selector))
+                .unwrap_or(false)
                 || c.tree_hash.starts_with(selector)
         })
     }
@@ -129,7 +135,13 @@ impl Journal {
                 .map(|t| format!(" [{}]", t.green()))
                 .unwrap_or_default();
 
-            println!("{} {} - {}{}", id_str, time_str.dimmed(), cp.summary, tag_str);
+            println!(
+                "{} {} - {}{}",
+                id_str,
+                time_str.dimmed(),
+                cp.summary,
+                tag_str
+            );
 
             if let Some(cmd) = &cp.command {
                 let code_str = match cp.exit_code {
@@ -141,7 +153,13 @@ impl Journal {
                     .duration_ms
                     .map(|d| format!(" ({}ms)", d))
                     .unwrap_or_default();
-                println!("    {} `{}` [exit: {}{}]", "cmd:".dimmed(), cmd, code_str, dur_str.dimmed());
+                println!(
+                    "    {} `{}` [exit: {}{}]",
+                    "cmd:".dimmed(),
+                    cmd,
+                    code_str,
+                    dur_str.dimmed()
+                );
             }
 
             if let Some(agent) = &cp.agent_name {
@@ -154,15 +172,16 @@ impl Journal {
             }
 
             if let Some(prompt) = &cp.agent_prompt {
-                let truncated = if prompt.len() > 80 {
-                    format!("{}...", &prompt[..77])
+                let truncated = if prompt.chars().nth(80).is_some() {
+                    format!("{}...", prompt.chars().take(77).collect::<String>())
                 } else {
                     prompt.clone()
                 };
                 println!("    {} \"{}\"", "prompt:".dimmed(), truncated.italic());
             }
 
-            println!("    {} {} files ({:.2} MB) | tree: {:.8}",
+            println!(
+                "    {} {} files ({:.2} MB) | tree: {:.8}",
                 "tree:".dimmed(),
                 cp.total_files,
                 cp.total_bytes as f64 / 1_048_576.0,

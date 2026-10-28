@@ -169,8 +169,9 @@ fn validate_path(workspace: &Path, relative: &str) -> io::Result<()> {
         ));
     }
     let mut parent = workspace.to_path_buf();
-    let components: Vec<_> = path.components().collect();
-    for part in &components[..components.len() - 1] {
+    let mut components = path.components();
+    components.next_back();
+    for part in components {
         parent.push(part.as_os_str());
         match fs::symlink_metadata(&parent) {
             Ok(metadata) if metadata.is_symlink() => {

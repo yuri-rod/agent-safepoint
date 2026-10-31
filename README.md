@@ -103,6 +103,14 @@ The tests create disposable directories and Git repositories:
 
 CI runs on Linux and macOS. Its formatting check covers changed Rust files. Before contributing, format each changed Rust file with `rustfmt --edition 2021 path/to/file.rs`, run the relevant regression and full suite, and describe any checks that could not run. Keep filesystem-destructive tests inside disposable workspaces.
 
+## Technical roadmap
+
+Realistic planned engineering milestones:
+
+1. Sparse workspace hashing and incremental scanning (10 hours): On large codebases, check file modification times and inode sizes before rehashing unchanged files. This speeds up consecutive checkpoints by skipping unchanged trees.
+2. Object store garbage collection and retention policies (10 hours): Implement `safepoint gc` to identify and remove unreferenced content blobs when checkpoints age out or get deleted, keeping disk usage under control.
+3. Signal forwarding and interactive terminal pass-through (8 hours): Forward POSIX signals (SIGINT, SIGTERM, SIGHUP) to wrapped commands in `safepoint run`, ensuring interactive processes exit gracefully during manual interrupts.
+
 ## License
 
 [MIT](LICENSE).

@@ -43,6 +43,9 @@ impl Journal {
             return Ok(Self::default());
         }
         let bytes = fs::read(&path)?;
+        if bytes.is_empty() {
+            return Ok(Self::default());
+        }
         serde_json::from_slice(&bytes).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 
@@ -53,7 +56,13 @@ impl Journal {
         }
         let json_bytes = serde_json::to_vec_pretty(self)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-        fs::write(path, json_bytes)
+        let tmp_path = path.with_extension(format!("tmp.{}", std::process::id()));
+        {
+            let mut file = fs::File::create(&tmp_path)?;
+            io::Write::write_all(&mut file, &json_bytes)?;
+            file.sync_all()?;
+        }
+        fs::rename(tmp_path, path)
     }
 
     #[expect(

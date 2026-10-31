@@ -2,6 +2,7 @@ use std::fs;
 use std::io;
 
 use safepoint::core::cas::ObjectStore;
+use safepoint::core::journal::Journal;
 use safepoint::core::restore::RestorePlan;
 use safepoint::core::tree::{FileEntry, TreeManifest};
 use tempfile::TempDir;
@@ -230,4 +231,38 @@ fn restoring_regular_file_replaces_symlink_without_touching_its_target() {
         .unwrap()
         .is_symlink());
     assert_eq!(fs::read(outside).unwrap(), b"outside work");
+}
+
+#[test]
+fn journal_atomic_save_and_empty_file_recovery() {
+    let temp = TempDir::new().unwrap();
+    let safepoint_dir = temp.path().join(".safepoint");
+    let mut journal = Journal::load(&safepoint_dir).unwrap();
+    assert_eq!(journal.checkpoints.len(), 0);
+
+    journal.add(
+        "abc123hash".into(),
+        None,
+        "initial test checkpoint".into(),
+        1,
+        100,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Vec::new(),
+    );
+    journal.save(&safepoint_dir).unwrap();
+
+    let reloaded = Journal::load(&safepoint_dir).unwrap();
+    assert_eq!(reloaded.checkpoints.len(), 1);
+    assert_eq!(reloaded.checkpoints[0].tree_hash, "abc123hash");
+
+    // Test interrupted empty file recovers to default empty journal without panic
+    let journal_file = Journal::journal_path(&safepoint_dir);
+    fs::write(&journal_file, b"").unwrap();
+    let recovered = Journal::load(&safepoint_dir).unwrap();
+    assert_eq!(recovered.checkpoints.len(), 0);
 }
